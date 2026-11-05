@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fig. 14 video scene</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html, body { margin:0; background:#fbf5e6; }
+  body { display:flex; justify-content:center; }
+  svg { width:min(100%,900px); height:auto; display:block; }
+</style>
+</head>
+<body>
+<!-- Build source for exports/dihedral-triangle-loop.mp4 (side by side: turn then flip, flip then turn).
+     Not the published page: index.html stays standalone. Export: python3 ../design/tools/export.py dihedral-triangle/video.html
+     Open it plain to watch the loop. -->
+<svg id="fig" viewBox="0 0 1200 1000" role="img" aria-label="Two triangles side by side. Left: turn, then flip. Right: flip, then turn. They end with different corners on top."></svg>
+<script src="../design/tools/export-page.js"></script>
+<script src="../design/meme/parts.js"></script>
+<script>
+
+// Words read at phone size: the figure shrinks to about half on a phone, so words are drawn bigger (ZOOM).
+// { raw: true } skips it (numbers that sit inside a circle).
+const ZOOM = 1.35;
+function bigText(m) {
+  const t = m.text, g = m.tag; let inTag = false;
+  m.text = (x, y, s, o = {}) => t(x, y, s, (inTag || o.raw) ? o : { ...o, size: Math.round((o.size || 18) * ZOOM) });
+  m.tag = (x, y, s, k, o = {}) => { inTag = true; const r = g(x, y, s, k, { ...o, size: Math.round((o.size || 18) * ZOOM), ...(o.width ? { width: Math.round(o.width * ZOOM) } : {}) }); inTag = false; return r; };
+  return m;
+}
+const K = 0.7;   // speed: times below are written for 16 s, scaled by K
+const EXPORT = { format: "mp4", width: 1200, height: 1000, fps: 30, seconds: 16 * K, loop: true, sound: true, background: "paper" };
+const LOOP = EXPORT.seconds;
+const svg = document.getElementById('fig');
+const NAMES = { '123': 'e', '312': 'r', '231': 'r²', '132': 'f', '321': 'rf', '213': 'r²f' };
+const NOTE = { 'r': 440, 'r²': 523.3, f: 392, rf: 587.3, 'r²f': 698.5 };
+const SLOTS = [-90, 30, 150].map(d => d * Math.PI / 180);
+const TR = 165, PR = 28, CY = 430;
+
+// Each panel: a list of moves. kind turn|flip, dir +1 or -1 (turn back), t0 to t1 seconds.
+const A = [{ kind: 'turn', dir: 1, t0: 1.2 * K, t1: 2.7 * K }, { kind: 'flip', dir: 1, t0: 3.1 * K, t1: 4.4 * K }, { kind: 'flip', dir: 1, t0: 11.8 * K, t1: 13.0 * K }, { kind: 'turn', dir: -1, t0: 13.5 * K, t1: 15.0 * K }];
+const B = [{ kind: 'flip', dir: 1, t0: 1.2 * K, t1: 2.5 * K }, { kind: 'turn', dir: 1, t0: 3.1 * K, t1: 4.6 * K }, { kind: 'turn', dir: -1, t0: 11.8 * K, t1: 13.3 * K }, { kind: 'flip', dir: 1, t0: 13.7 * K, t1: 15.0 * K }];
+const REVEAL = 5.2 * K, REVEAL_END = 11.2 * K, HOME = 15 * K;
+const ease = u => u * u * (3 - 2 * u);
+
+function apply(s, mv) {
+  const a = s.arr;
+  return { arr: mv.kind === 'turn' ? (mv.dir > 0 ? [a[2], a[0], a[1]] : [a[1], a[2], a[0]]) : [a[0], a[2], a[1]], down: mv.kind === 'flip' ? !s.down : s.down };
+}
+function stateAt(t, seq) {
+  let s = { arr: [1, 2, 3], down: false, anim: null };
+  for (const mv of seq) {
+    if (t >= mv.t1) s = { ...apply(s, mv), anim: null };
+    else { if (t > mv.t0) s.anim = { ...mv, u: ease((t - mv.t0) / (mv.t1 - mv.t0)) }; break; }
+  }
+  return s;
+}
+const nm = s => NAMES[s.arr.join('')];
+
+function drawPanel(m, cx, seq, t, label, trail, ends) {
+  const s = stateAt(t, seq), an = s.anim;
+  const pts = s.arr.map((c, p) => {
+    let x = Math.cos(SLOTS[p]), y = Math.sin(SLOTS[p]);
+    if (an && an.kind === 'turn') { const g = SLOTS[p] + an.dir * an.u * 2 * Math.PI / 3; x = Math.cos(g); y = Math.sin(g); }
+    if (an && an.kind === 'flip') x *= Math.cos(Math.PI * an.u);
+    return [cx + TR * x, CY + TR * y, c];
+  });
+  const down = an && an.kind === 'flip' && an.u > 0.5 ? !s.down : s.down;
+  m.tag(cx, 130, label, 'coral', { anchor: 'middle', size: 30 });
+  m.poly(pts.map(p => [p[0], p[1]]), down ? 'coral' : 'sky', { t: down ? 0.8 : 1, noInk: true });
+  [[0, 1], [1, 2], [2, 0]].forEach(([i, j]) => { const A = pts[i], B = pts[j]; if (Math.hypot(A[0] - B[0], A[1] - B[1]) > 2 * PR + 2) m.link([A[0], A[1], PR], [B[0], B[1], PR]); });
+  const revealed = t >= REVEAL && t < REVEAL_END && !an;
+  pts.forEach(([x, y, c], i) => {
+    const top = revealed && s.arr[0] === c && i === 0;
+    m.circle(x, y, PR, top ? 'coral' : 'peach', { t: top ? 1.0 : 0.65 });
+    m.text(x, y, '' + c, { size: 28, raw: true });
+  });
+  if (revealed) m.tag(cx, 205, s.arr[0] + ' on top', 'coral', { anchor: 'middle', size: 26 });
+  m.tag(cx, 668, down ? 'face down' : 'face up', down ? 'coral' : 'sky', { anchor: 'middle', size: 22 });
+  // trail: e, middle, end. Fills as the triangle reaches each.
+  const names = trail, xs = [cx - 130, cx, cx + 130], y = 752;
+  const cur = an ? null : nm(s);
+  names.forEach((n, i) => {
+    const k = i === 0 ? 'peach' : 'coral';
+    const reached = i === 0 || (t >= seq[i - 1].t1 && t < HOME);
+    const here = cur === n;
+    if (i) m.arrow(xs[i - 1] + 28, y, xs[i] - 34, y, { size: 10 });
+    m.circle(xs[i], y, 24, reached ? (here ? 'coral' : k) : 'sky', { t: reached ? (here ? 1.0 : 0.6) : 1 });
+    m.tag(xs[i], y + 52, n, reached ? k : 'sky', { anchor: 'middle', size: 22 });
+  });
+}
+
+function draw(p) {
+  const t = (p * LOOP) % LOOP;
+  svg.replaceChildren();
+  const m = bigText(MemeParts.piece(svg));
+  m.tag(16, 26, 'Fig. 14', 'peach', { size: 18 });
+  m.title(600, 62, 'same two moves, two orders', { size: 40 });
+  drawPanel(m, 300, A, t, 'turn, then flip', ['e', 'r', 'rf']);
+  drawPanel(m, 900, B, t, 'flip, then turn', ['e', 'f', 'r²f']);
+  if (t >= REVEAL && t < REVEAL_END) m.text(600, CY, '≠', { size: 130, color: '#c4543a' });
+  m.text(600, 872, (t < REVEAL || t >= HOME) ? 'start at e. same two moves.' : t < REVEAL_END ? 'rf is not r²f: order matters' : 'every move can be undone', { size: 36 });
+  m.text(600, 920, t >= REVEAL && t < REVEAL_END ? 'a different corner ends up on top' : '', { size: 24, weight: 400 });
+}
+
+// ---- sound: offline render of the logged events, same voices as MemeSound ----
+function events() {
+  const ev = [];
+  for (const seq of [A, B]) {
+    let s = { arr: [1, 2, 3], down: false };
+    seq.forEach(mv => {
+      s = apply(s, mv); const n = nm(s);
+      ev.push(n === 'e' ? { t: mv.t1, k: 'chime' } : { t: mv.t1, k: mv.kind === 'flip' ? 'thump' : 'pluck', f: NOTE[n] });
+    });
+  }
+  ev.push({ t: REVEAL, k: 'thump', f: 196 });
+  return ev;
+}
+async function renderAudio() {
+  const SR = 44100, ac = new OfflineAudioContext(1, SR * LOOP, SR);
+  const note = (f, t, dur, vol, type) => {
+    const o = ac.createOscillator(), g = ac.createGain(); o.type = type; o.frequency.value = f;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur + 0.05);
+  };
+  const seen = new Set();
+  events().forEach(e => {
+    const key = e.k + e.t.toFixed(2); if (seen.has(key)) { return; } seen.add(key);   // both panels landing together sound once
+    if (e.k === 'pluck') note(e.f, e.t, 0.5, 0.1, 'triangle');
+    else if (e.k === 'thump') note(e.f, e.t, 0.3, 0.12, 'sine');
+    else [349.2, 440, 523.3].forEach((f, i) => note(f, e.t + i * 0.07, 0.9, 0.07, 'triangle'));
+  });
+  const buf = await ac.startRendering(), d = buf.getChannelData(0);
+  const out = new DataView(new ArrayBuffer(44 + d.length * 2)), w = (o, s) => [...s].forEach((c, i) => out.setUint8(o + i, c.charCodeAt(0)));
+  w(0, 'RIFF'); out.setUint32(4, 36 + d.length * 2, true); w(8, 'WAVEfmt '); out.setUint32(16, 16, true); out.setUint16(20, 1, true);
+  out.setUint16(22, 1, true); out.setUint32(24, SR, true); out.setUint32(28, SR * 2, true); out.setUint16(32, 2, true); out.setUint16(34, 16, true);
+  w(36, 'data'); out.setUint32(40, d.length * 2, true);
+  for (let i = 0; i < d.length; i++) out.setInt16(44 + i * 2, Math.max(-1, Math.min(1, d[i])) * 32767, true);
+  return new Blob([out], { type: 'audio/wav' });
+}
+
+const fontReady = () => Promise.all([...document.querySelectorAll('link[rel=stylesheet]')].map(l => l.sheet ? 1 : new Promise(y => l.addEventListener('load', y)))).then(() => document.fonts.load('700 20px Nunito'));
+if (ExportPage.wanted) fontReady().then(() => MemeParts.export(svg, draw, EXPORT, { audio: renderAudio }));
+else { draw(0); document.fonts.ready.then(() => { const t0 = performance.now(); const f = now => { draw(((now - t0) / 1000 % LOOP) / LOOP); requestAnimationFrame(f); }; requestAnimationFrame(f); }); }
+</script>
+</body>
+</html>
